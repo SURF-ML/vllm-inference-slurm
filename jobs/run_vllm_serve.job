@@ -1,0 +1,87 @@
+#!/bin/bash
+#SBATCH --job-name=vllm_inference
+#SBATCH --partition=gpu_a100
+#SBATCH --nodes=1
+#SBATCH --ntasks=1
+#SBATCH --gpus-per-node=1
+#SBATCH --time=02:00:00
+
+
+# Path to .sif apptainer
+CONTAINER_PATH=...
+# In case data is on project space define this
+PROJECT_SPACE=
+
+# Prevent models from saving it /home/<user>/.cache
+DOWNLOAD_DIR=/scratch-shared/$USER/vllm/
+export HF_HOME=$DOWNLOAD_DIR
+mkdir -p $DOWNLOAD_DIR
+
+
+MODEL_CHECKPOINT=Unbabel/Tower-Plus-2B
+DATASET=openai/gsm8k
+TEMPLATE_PRESET=gsm8k
+PORT=8000
+DATA_SPLIT=test[:100]
+VLLM_BASE_URL=http://localhost:$PORT/v1
+TEMPERATURE=0.7
+MAX_TOKENS=256
+MAX_CONCURRENT=64
+OUTPUT_JSON=predictions.json
+
+
+BIND_DIRS="/scratch-shared/$USER,$PROJECT_SPACE"
+#export LD_LIBRARY_PATH=/usr/local/cuda/compat/lib.real:$LD_LIBRARY_PATH
+apptainer exec --nv \
+  -B "${BIND_DIRS}" \
+   "${CONTAINER_PATH}" \
+  vllm serve $MODEL_CHECKPOINT \
+  --tensor-parallel-size 1$SLURM_GPUS_ON_NODE \
+  --download-dir $DOWNLOAD_DIR \
+  --uvicorn-log-level warning \
+  --port $PORT &
+
+
+# Catch the process of the vllm server
+VLLM_PID=$!
+
+echo "Waiting for vLLM server to be ready..."
+MAX_WAIT=1000
+ELAPSED=0
+while ! curl -s http://localhost:$PORT/health > /dev/null; do
+    sleep 5
+    ELAPSED=$((ELAPSED + 5))
+    if [ ${ELAPSED} -ge ${MAX_WAIT} ]; then
+        echo "Error: vLLM server failed to start within ${MAX_WAIT} seconds"
+        kill ${VLLM_PID} 2>/dev/null
+        exit 1
+    fi
+    echo "Waiting... ${ELAPSED}s"
+done
+
+echo "Starting model prediction generation..."
+apptainer exec --nv \
+  -B "${BIND_DIRS}" \
+  "${CONTAINER_PATH}" \
+  python run_inference.py \
+    --model "$MODEL_CHECKPOINT" \
+    --dataset "$DATASET" \
+    --split $DATA_SPLIT \
+    --template_preset "$TEMPLATE_PRESET" \
+    --base_url "$VLLM_BASE_URL" \
+    --temperature "$TEMPERATURE" \
+    --max_tokens "$MAX_TOKENS" \
+    --max_concurrent "$MAX_CONCURRENT" \
+    --output "$OUTPUT_JSON"
+
+
+# First, try graceful shutdown with SIGTERM
+kill ${VLLM_PID} 2>/dev/null
+
+# Wait a few seconds for graceful shutdown
+sleep 5
+
+kill -9 ${VLLM_PID} 2>/dev/null
+wait ${VLLM_PID} 2>/dev/null
+
+echo "vLLM server stopped."

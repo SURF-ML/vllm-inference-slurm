@@ -1,0 +1,66 @@
+#!/bin/bash
+#SBATCH --job-name=build_vllm
+#SBATCH --partition=genoa
+#SBATCH --nodes=1
+#SBATCH --ntasks=1
+#SBATCH --cpus-per-task=4
+#SBATCH --mem=16G
+#SBATCH --time=01:00:00
+#SBATCH --output=build_vllm_%j.out
+#SBATCH --error=build_vllm_%j.err
+
+
+# Refer to here for NGC vLLM versions: https://catalog.ngc.nvidia.com/orgs/nvidia/containers/vllm/tags
+VLLM_VERSION=${VLLM_VERSION:-"25.09"}
+
+OUTPUT_PATH=/scratch-shared/$USER
+
+
+# For storing persistent containers
+APPTAINER_CACHEDIR=/dev/shm/$USER/
+# For storing during build time
+APPTAINER_TMPDIR=/dev/shm/$USER/
+mkdir -p $APPTAINER_CACHEDIR $APPTAINER_TMPDIR
+
+# Create definition recipe file
+cat > vllm.def <<EOF
+Bootstrap: docker
+From: nvcr.io/nvidia/vllm:${VLLM_VERSION}-py3
+
+%post
+    pip install datasets wandb
+	
+    # Create the directory Triton expects and point it to the host driver
+    # because Triton requires /usr/local/cuda/compat/lib/libcuda.so.1 to exist for GPU runtime
+    mkdir -p /usr/local/cuda/compat/lib
+    ln -sf /usr/lib64/libcuda.so /usr/local/cuda/compat/lib/libcuda.so.1
+    ln -sf libcuda.so.1 /usr/local/cuda/compat/lib/libcuda.so
+    
+    # Add this directory to the container's dynamic linker cache
+    echo "/usr/local/cuda/compat/lib" > /etc/ld.so.conf.d/cuda-compat.conf
+    ldconfig
+
+%environment
+    # Prevent Python from using user site-packages from /home/<user>/.local
+    export PYTHONNOUSERSITE=1
+    # Suppress FutureWarning for pynvml
+    export PYTHONWARNINGS="ignore::FutureWarning"
+    # Prevent xalt bind
+    export LD_PRELOAD=
+
+
+%help
+    To spawn the vllm server:
+    $ apptainer exec --nv vllm_${VLLM_VERSION}.sif vllm serve <model_name>
+
+    In case of a local model running from a folder not in your home space, include it with -B
+    $ apptainer exec --nv -B <path_to_model> vllm_${VLLM_VERSION}.sif vllm serve <model_name>
+
+EOF
+
+# Build the container
+echo "Building vLLM ${VLLM_VERSION} Apptainer container..."
+apptainer build $OUTPUT_PATH/vllm_${VLLM_VERSION}.sif vllm.def
+
+# Clean up temporary apptainer recipe file
+rm vllm.def
