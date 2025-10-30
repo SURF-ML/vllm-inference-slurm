@@ -6,7 +6,7 @@ This repository contains scripts and source code to build and run vLLM inside an
 - **jobs/**: SLURM job scripts to build the container and run inference.
 - **src/**: Python source code for running vLLM inference.
 
-This repository is the codebase for the tutorial here: <TODO>
+This repository is the codebase for the tutorial here: https://servicedesk.surf.nl/wiki/spaces/WIKI/pages/232851290/LLM+and+VLM+inference+on+Snellius+with+vLLM
 
 ## Repository Structure
 
@@ -26,6 +26,9 @@ vllm-inference-slurm/
 ## Usage
 
 ### 1. Build the container (SLURM)
+Skip this step if you the prebuilt container on Snellius is sufficient. Refer to [here](https://servicedesk.surf.nl/wiki/spaces/WIKI/pages/232851290/LLM+and+VLM+inference+on+Snellius+with+vLLM)
+
+#### Build your own container
 ```bash
 sbatch jobs/build_vllm.job
 ```

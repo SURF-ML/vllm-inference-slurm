@@ -1,15 +1,15 @@
 #!/bin/bash
 #SBATCH --job-name=vllm_inference
-#SBATCH --partition=gpu_a100
+#SBATCH --partition=gpu_a100 # or gpu_h100
 #SBATCH --nodes=1
-#SBATCH --ntasks=1
-#SBATCH --gpus-per-node=1
+#SBATCH --ntasks=1 # equal to gpus-per-node
+#SBATCH --gpus-per-node=1 # 1-4 GPUs per node
 #SBATCH --time=02:00:00
 
 
-# Path to .sif apptainer
-CONTAINER_PATH=...
-# In case data is on project space define this
+# Path to .sif apptainer. Use your own container or the prebuilt container below
+CONTAINER_PATH=/projects/2/managed_datasets/containers/vllm/vllm_25.09.sif
+# In case data is on project space define this such that apptainer binds the project space
 PROJECT_SPACE=
 
 # Prevent models from saving it /home/<user>/.cache
@@ -22,21 +22,21 @@ MODEL_CHECKPOINT=Unbabel/Tower-Plus-2B
 DATASET=openai/gsm8k
 TEMPLATE_PRESET=gsm8k
 PORT=8000
-DATA_SPLIT=test[:100]
+DATA_SPLIT=test[:100] # only load 100 samples and run inference on them
 VLLM_BASE_URL=http://localhost:$PORT/v1
 TEMPERATURE=0.7
 MAX_TOKENS=256
 MAX_CONCURRENT=64
 OUTPUT_JSON=predictions.json
 
+VLLM_INFERENCE_SCRIPT=src/vllm_serve.py
 
 BIND_DIRS="/scratch-shared/$USER,$PROJECT_SPACE"
-#export LD_LIBRARY_PATH=/usr/local/cuda/compat/lib.real:$LD_LIBRARY_PATH
 apptainer exec --nv \
   -B "${BIND_DIRS}" \
    "${CONTAINER_PATH}" \
   vllm serve $MODEL_CHECKPOINT \
-  --tensor-parallel-size 1$SLURM_GPUS_ON_NODE \
+  --tensor-parallel-size $SLURM_GPUS_ON_NODE \
   --download-dir $DOWNLOAD_DIR \
   --uvicorn-log-level warning \
   --port $PORT &
@@ -63,7 +63,7 @@ echo "Starting model prediction generation..."
 apptainer exec --nv \
   -B "${BIND_DIRS}" \
   "${CONTAINER_PATH}" \
-  python run_inference.py \
+  python $VLLM_INFERENCE_SCRIPT \
     --model "$MODEL_CHECKPOINT" \
     --dataset "$DATASET" \
     --split $DATA_SPLIT \
