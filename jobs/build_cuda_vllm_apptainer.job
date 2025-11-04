@@ -1,0 +1,73 @@
+#!/bin/bash
+#SBATCH --job-name=build_cuda_vllm
+#SBATCH --partition=genoa
+#SBATCH --nodes=1
+#SBATCH --ntasks=1
+#SBATCH --cpus-per-task=4
+#SBATCH --mem=16G
+#SBATCH --time=01:00:00
+
+
+# Refer to here for CUDA container:
+CUDA_CONTAINER_URL=cuda:13.0.0-devel-ubuntu22.04
+OUTPUT_NAME="cuda-13.0-vllm"
+OUTPUT_PATH=/scratch-shared/$USER
+
+
+# For storing persistent containers
+APPTAINER_CACHEDIR=/dev/shm/$USER/
+# For storing during build time
+APPTAINER_TMPDIR=/dev/shm/$USER/
+mkdir -p $APPTAINER_CACHEDIR $APPTAINER_TMPDIR
+
+# Create definition recipe file
+cat > vllm.def <<EOF
+Bootstrap: docker
+From: nvcr.io/nvidia/${CUDA_CONTAINER_URL}
+
+%post
+    apt-get update && apt-get install -y \
+        software-properties-common \
+        curl \
+        wget \
+        gnupg \
+        git \
+        python3-pip \
+
+    pip install uv
+    uv pip install torch --index-url https://download.pytorch.org/whl/cu130 --system
+    uv pip install vllm flashinfer-python triton wandb --system 
+    uv pip install flash-attn --no-build-isolation --system
+    # Create symlinks for Triton from system to apptainer
+    mkdir -p /usr/local/cuda/compat/lib
+    ln -sf /usr/lib64/libcuda.so /usr/local/cuda/compat/lib/libcuda.so.1
+    ln -sf libcuda.so.1 /usr/local/cuda/compat/lib/libcuda.so
+    
+   # Add this directory to the container's dynamic linker cache
+    echo "/usr/local/cuda/compat/lib" > /etc/ld.so.conf.d/cuda-compat.conf
+    ldconfig
+
+%environment
+    # Prevent Python from using user site-packages from /home/<user>/.local
+    export PYTHONNOUSERSITE=1
+    # Suppress FutureWarning for pynvml
+    export PYTHONWARNINGS="ignore::FutureWarning"
+    # Prevent xalt bind
+    export LD_PRELOAD=
+
+
+%help
+    To spawn the vllm server:
+    $ apptainer exec --nv vllm_${VLLM_VERSION}.sif vllm serve <model_name>
+
+    In case of a local model running from a folder not in your home space, include it with -B
+    $ apptainer exec --nv -B <path_to_model> vllm_${VLLM_VERSION}.sif vllm serve <model_name>
+
+EOF
+
+# Build the container
+echo "Building CUDA $CUDA_CONTAINER_URL Apptainer container..."
+apptainer build $OUTPUT_PATH/$OUTPUT_NAME.sif vllm.def
+
+# Clean up temporary apptainer recipe file
+rm vllm.def

@@ -29,9 +29,16 @@ vllm-inference-slurm/
 Skip this step if you the prebuilt container on Snellius is sufficient. Refer to [here](https://servicedesk.surf.nl/wiki/spaces/WIKI/pages/232851290/LLM+inference+on+Snellius+with+vLLM)
 
 #### Build your own container
+Build an NGC vLLM container from [here](https://catalog.ngc.nvidia.com/orgs/nvidia/containers/vllm/tags). Note: these containers do always run smoothly on every model from HuggingFace. Consider using the CUDA container below.
 ```bash
 sbatch jobs/build_vllm.job
 ```
+
+Alternatively, use a CUDA container and install torch, vLLM, etc from [here](https://hub.docker.com/r/nvidia/cuda/tags). While this container generally works, it might not be optimized for hardware as the container above.
+```bash
+sbatch jobs/build_cuda_vllm_apptainer.job
+```
+
 
 ### 2. Run vLLM inference
 
