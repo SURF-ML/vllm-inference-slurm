@@ -2,13 +2,13 @@
 #SBATCH --job-name=vllm_inference
 #SBATCH --partition=gpu_a100 # or gpu_h100
 #SBATCH --nodes=1
-#SBATCH --ntasks=1 # equal to gpus-per-node
-#SBATCH --gpus-per-node=1 # 1-4 GPUs per node
+#SBATCH --ntasks=1
+#SBATCH --gpus-per-node=1
 #SBATCH --time=02:00:00
 
 
 # Path to .sif apptainer. Use your own container or the prebuilt container below
-CONTAINER_PATH=/projects/2/managed_datasets/containers/vllm/vllm_25.09.sif
+CONTAINER_PATH=
 # In case data is on project space define this such that apptainer binds the project space
 PROJECT_SPACE=
 

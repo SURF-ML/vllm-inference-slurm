@@ -31,7 +31,7 @@ Skip this step if you the prebuilt container on Snellius is sufficient. Refer to
 #### Build your own container
 Build an NGC vLLM container from [here](https://catalog.ngc.nvidia.com/orgs/nvidia/containers/vllm/tags). Note: these containers do always run smoothly on every model from HuggingFace. Consider using the CUDA container below.
 ```bash
-sbatch jobs/build_vllm.job
+sbatch jobs/build_vllm_apptainer.job
 ```
 
 Alternatively, use a CUDA container and install torch, vLLM, etc from [here](https://hub.docker.com/r/nvidia/cuda/tags). While this container generally works, it might not be optimized for hardware as the container above.

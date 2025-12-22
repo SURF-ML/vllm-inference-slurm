@@ -3,16 +3,14 @@
 #SBATCH --partition=genoa
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
-#SBATCH --cpus-per-task=4
-#SBATCH --mem=16G
+#SBATCH --cpus-per-task=48
 #SBATCH --time=01:00:00
 
 
-# Refer to here for NGC vLLM versions: https://catalog.ngc.nvidia.com/orgs/nvidia/containers/vllm/tags
-VLLM_VERSION=${VLLM_VERSION:-"25.09"}
-
-OUTPUT_PATH=/scratch-shared/$USER
-
+# Refer to here for the latest vLLM images: https://hub.docker.com/r/vllm/vllm-openai/tags
+VLLM_IMAGE="vllm/vllm-openai:latest"
+OUTPUT_PATH=/scratch-shared/$USER/
+VLLM_IMAGE_NAME="vllm.sif"
 
 # For storing persistent containers
 APPTAINER_CACHEDIR=/dev/shm/$USER/
@@ -23,42 +21,17 @@ mkdir -p $APPTAINER_CACHEDIR $APPTAINER_TMPDIR
 # Create definition recipe file
 cat > vllm.def <<EOF
 Bootstrap: docker
-From: nvcr.io/nvidia/vllm:${VLLM_VERSION}-py3
-
-%post
-    pip install datasets wandb
+From: $VLLM_IMAGE
 	
-    # Create the directory Triton expects and point it to the host driver
-    # because Triton requires /usr/local/cuda/compat/lib/libcuda.so.1 to exist for GPU runtime
-    mkdir -p /usr/local/cuda/compat/lib
-    ln -sf /usr/lib64/libcuda.so /usr/local/cuda/compat/lib/libcuda.so.1
-    ln -sf libcuda.so.1 /usr/local/cuda/compat/lib/libcuda.so
-    
-    # Add this directory to the container's dynamic linker cache
-    echo "/usr/local/cuda/compat/lib" > /etc/ld.so.conf.d/cuda-compat.conf
-    ldconfig
-
 %environment
-    # Prevent Python from using user site-packages from /home/<user>/.local
+    export CUDA_HOME=/usr/local/cuda
+    export LD_LIBRARY_PATH=/usr/local/cuda/lib64    
     export PYTHONNOUSERSITE=1
-    # Suppress FutureWarning for pynvml
-    export PYTHONWARNINGS="ignore::FutureWarning"
-    # Prevent xalt bind
     export LD_PRELOAD=
-
-
-%help
-    To spawn the vllm server:
-    $ apptainer exec --nv vllm_${VLLM_VERSION}.sif vllm serve <model_name>
-
-    In case of a local model running from a folder not in your home space, include it with -B
-    $ apptainer exec --nv -B <path_to_model> vllm_${VLLM_VERSION}.sif vllm serve <model_name>
-
 EOF
 
 # Build the container
-echo "Building vLLM ${VLLM_VERSION} Apptainer container..."
-apptainer build $OUTPUT_PATH/vllm_${VLLM_VERSION}.sif vllm.def
-
+echo "Building latest vLLM Apptainer container..."
+apptainer build $OUTPUT_PATH/$VLLM_IMAGE_NAME vllm.def
 # Clean up temporary apptainer recipe file
 rm vllm.def
